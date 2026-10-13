@@ -1,0 +1,614 @@
+"""
+Caso práctico: Sistema de gestión de órdenes de servicio de un centro de atención.
+
+Se implementan tres estructuras de datos básicas desde cero (sin usar list de
+Python como contenedor principal):
+    - Lista simplemente ligada
+    - Lista doblemente ligada
+    - Lista circular (simple y doble)
+
+y 10 ejercicios que las utilizan junto con algoritmos de ordenamiento
+(inserción, burbuja, selección) y búsqueda (lineal y binaria).
+"""
+
+from dataclasses import dataclass
+
+PRUEBAS_OK = 0
+
+
+def verificar(condicion, mensaje):
+    """Aserción con contador, para el reporte de pruebas."""
+    global PRUEBAS_OK
+    assert condicion, f"FALLÓ: {mensaje}"
+    PRUEBAS_OK += 1
+    print(f"   [OK] {mensaje}")
+
+
+def titulo(texto):
+    print("\n" + "=" * 70)
+    print(texto)
+    print("=" * 70)
+
+
+@dataclass
+class Orden:
+    """Orden de servicio. prioridad: 1 = alta, 2 = media, 3 = baja."""
+    folio: int
+    cliente: str
+    servicio: str
+    prioridad: int = 2
+
+    def __str__(self):
+        return f"#{self.folio} {self.cliente} - {self.servicio} (P{self.prioridad})"
+
+
+# ======================================================================
+# 1) LISTA SIMPLEMENTE LIGADA
+# ======================================================================
+class NodoS:
+    def __init__(self, dato):
+        self.dato = dato
+        self.sig = None
+
+
+class ListaSimple:
+    def __init__(self):
+        self.cabeza = None
+        self.tam = 0
+
+    def __len__(self):
+        return self.tam
+
+    def __iter__(self):
+        actual = self.cabeza
+        while actual:
+            yield actual.dato
+            actual = actual.sig
+
+    def insertar_inicio(self, dato):          # O(1)
+        nuevo = NodoS(dato)
+        nuevo.sig = self.cabeza
+        self.cabeza = nuevo
+        self.tam += 1
+
+    def insertar_final(self, dato):           # O(n)
+        nuevo = NodoS(dato)
+        if not self.cabeza:
+            self.cabeza = nuevo
+        else:
+            actual = self.cabeza
+            while actual.sig:
+                actual = actual.sig
+            actual.sig = nuevo
+        self.tam += 1
+
+    def buscar(self, folio):                  # búsqueda lineal O(n)
+        comparaciones = 0
+        actual = self.cabeza
+        while actual:
+            comparaciones += 1
+            if actual.dato.folio == folio:
+                return actual.dato, comparaciones
+            actual = actual.sig
+        return None, comparaciones
+
+    def eliminar(self, folio):                # O(n)
+        previo, actual = None, self.cabeza
+        while actual:
+            if actual.dato.folio == folio:
+                if previo:
+                    previo.sig = actual.sig
+                else:
+                    self.cabeza = actual.sig
+                self.tam -= 1
+                return actual.dato
+            previo, actual = actual, actual.sig
+        return None
+
+    def invertir(self):                       # O(n)
+        previo, actual = None, self.cabeza
+        while actual:
+            siguiente = actual.sig
+            actual.sig = previo
+            previo, actual = actual, siguiente
+        self.cabeza = previo
+
+    def ordenar_insercion(self):              # Inserción: O(n^2) peor caso
+        """Ordena por (prioridad, folio) reenlazando nodos."""
+        ordenada = None
+        actual = self.cabeza
+        while actual:
+            siguiente = actual.sig
+            clave = (actual.dato.prioridad, actual.dato.folio)
+            if ordenada is None or clave < (ordenada.dato.prioridad, ordenada.dato.folio):
+                actual.sig = ordenada
+                ordenada = actual
+            else:
+                p = ordenada
+                while p.sig and (p.sig.dato.prioridad, p.sig.dato.folio) <= clave:
+                    p = p.sig
+                actual.sig = p.sig
+                p.sig = actual
+            actual = siguiente
+        self.cabeza = ordenada
+
+    def a_arreglo(self):
+        return list(self)
+
+    @staticmethod
+    def fusionar_ordenadas(a, b):             # O(n + m)
+        """Mezcla dos listas ya ordenadas por (prioridad, folio)."""
+        resultado = ListaSimple()
+        x, y = a.cabeza, b.cabeza
+        cola = None
+
+        def clave(n):
+            return (n.dato.prioridad, n.dato.folio)
+
+        while x or y:
+            if y is None or (x is not None and clave(x) <= clave(y)):
+                tomado, x = x, x.sig
+            else:
+                tomado, y = y, y.sig
+            nuevo = NodoS(tomado.dato)
+            if cola is None:
+                resultado.cabeza = nuevo
+            else:
+                cola.sig = nuevo
+            cola = nuevo
+            resultado.tam += 1
+        return resultado
+
+
+# ======================================================================
+# 2) LISTA DOBLEMENTE LIGADA
+# ======================================================================
+class NodoD:
+    def __init__(self, dato):
+        self.dato = dato
+        self.sig = None
+        self.ant = None
+
+
+class ListaDoble:
+    def __init__(self):
+        self.cabeza = None
+        self.cola = None
+        self.tam = 0
+
+    def __len__(self):
+        return self.tam
+
+    def __iter__(self):
+        actual = self.cabeza
+        while actual:
+            yield actual.dato
+            actual = actual.sig
+
+    def recorrer_inverso(self):
+        actual = self.cola
+        while actual:
+            yield actual.dato
+            actual = actual.ant
+
+    def insertar_inicio(self, dato):          # O(1)
+        nuevo = NodoD(dato)
+        if self.cabeza is None:
+            self.cabeza = self.cola = nuevo
+        else:
+            nuevo.sig = self.cabeza
+            self.cabeza.ant = nuevo
+            self.cabeza = nuevo
+        self.tam += 1
+
+    def insertar_final(self, dato):           # O(1) gracias al puntero cola
+        nuevo = NodoD(dato)
+        if self.cola is None:
+            self.cabeza = self.cola = nuevo
+        else:
+            nuevo.ant = self.cola
+            self.cola.sig = nuevo
+            self.cola = nuevo
+        self.tam += 1
+
+    def _nodo_en(self, pos):
+        if pos < 0 or pos >= self.tam:
+            raise IndexError("posición fuera de rango")
+        if pos <= self.tam // 2:
+            actual = self.cabeza
+            for _ in range(pos):
+                actual = actual.sig
+        else:
+            actual = self.cola
+            for _ in range(self.tam - 1 - pos):
+                actual = actual.ant
+        return actual
+
+    def insertar_en(self, pos, dato):         # O(n)
+        if pos == 0:
+            return self.insertar_inicio(dato)
+        if pos == self.tam:
+            return self.insertar_final(dato)
+        derecho = self._nodo_en(pos)
+        nuevo = NodoD(dato)
+        izquierdo = derecho.ant
+        nuevo.ant, nuevo.sig = izquierdo, derecho
+        izquierdo.sig = nuevo
+        derecho.ant = nuevo
+        self.tam += 1
+
+    def eliminar_en(self, pos):               # O(n)
+        nodo = self._nodo_en(pos)
+        if nodo.ant:
+            nodo.ant.sig = nodo.sig
+        else:
+            self.cabeza = nodo.sig
+        if nodo.sig:
+            nodo.sig.ant = nodo.ant
+        else:
+            self.cola = nodo.ant
+        self.tam -= 1
+        return nodo.dato
+
+    def ordenar_burbuja(self):                # Burbuja: O(n^2), O(n) si ya está ordenada
+        if self.tam < 2:
+            return 0
+        intercambios = 0
+        hubo_cambio = True
+        limite = None
+        while hubo_cambio:
+            hubo_cambio = False
+            actual = self.cabeza
+            while actual.sig is not limite:
+                a, b = actual.dato, actual.sig.dato
+                if (a.prioridad, a.folio) > (b.prioridad, b.folio):
+                    actual.dato, actual.sig.dato = b, a
+                    intercambios += 1
+                    hubo_cambio = True
+                actual = actual.sig
+            limite = actual
+        return intercambios
+
+
+# ======================================================================
+# 3) LISTA CIRCULAR SIMPLE (guarda el puntero al ÚLTIMO nodo)
+# ======================================================================
+class ListaCircular:
+    def __init__(self):
+        self.ultimo = None
+        self.tam = 0
+
+    def __len__(self):
+        return self.tam
+
+    def __iter__(self):
+        if self.ultimo is None:
+            return
+        actual = self.ultimo.sig
+        for _ in range(self.tam):
+            yield actual.dato
+            actual = actual.sig
+
+    def insertar_final(self, dato):           # O(1)
+        nuevo = NodoS(dato)
+        if self.ultimo is None:
+            nuevo.sig = nuevo
+        else:
+            nuevo.sig = self.ultimo.sig
+            self.ultimo.sig = nuevo
+        self.ultimo = nuevo
+        self.tam += 1
+
+    def ordenar_seleccion(self, clave):       # Selección: O(n^2)
+        """Ordena intercambiando datos; clave(dato) -> valor comparable."""
+        if self.tam < 2:
+            return
+        actual = self.ultimo.sig
+        for restantes in range(self.tam - 1, 0, -1):
+            minimo = actual
+            p = actual.sig
+            for _ in range(restantes):
+                if clave(p.dato) < clave(minimo.dato):
+                    minimo = p
+                p = p.sig
+            actual.dato, minimo.dato = minimo.dato, actual.dato
+            actual = actual.sig
+
+    def round_robin(self, quantum):           # planificador de CPU
+        """Cada elemento es una lista [nombre, restante]. Devuelve
+        (bitácora de ejecución, tiempos de finalización)."""
+        bitacora, fin = [], {}
+        reloj = 0
+        previo, actual = self.ultimo, self.ultimo.sig
+        while self.tam > 0:
+            proceso = actual.dato
+            uso = min(quantum, proceso[1])
+            proceso[1] -= uso
+            reloj += uso
+            bitacora.append((proceso[0], uso, reloj))
+            if proceso[1] == 0:
+                fin[proceso[0]] = reloj
+                self.tam -= 1
+                if self.tam == 0:
+                    self.ultimo = None
+                    break
+                previo.sig = actual.sig
+                if actual is self.ultimo:
+                    self.ultimo = previo
+                actual = previo.sig
+            else:
+                previo, actual = actual, actual.sig
+        return bitacora, fin
+
+    def josefo(self, k):                      # Problema de Josefo
+        """Elimina cada k-ésimo elemento hasta quedar uno."""
+        eliminados = []
+        previo = self.ultimo
+        while self.tam > 1:
+            for _ in range(k - 1):
+                previo = previo.sig
+            victima = previo.sig
+            eliminados.append(victima.dato)
+            previo.sig = victima.sig
+            self.tam -= 1
+        self.ultimo = previo
+        return eliminados, previo.sig.dato
+
+
+# ======================================================================
+# 4) LISTA CIRCULAR DOBLE (reproductor)
+# ======================================================================
+class ListaCircularDoble:
+    def __init__(self):
+        self.actual = None
+        self.tam = 0
+
+    def agregar(self, dato):                  # inserta antes de 'actual' (al final del ciclo)
+        nuevo = NodoD(dato)
+        if self.actual is None:
+            nuevo.sig = nuevo.ant = nuevo
+            self.actual = nuevo
+        else:
+            ultimo = self.actual.ant
+            nuevo.sig, nuevo.ant = self.actual, ultimo
+            ultimo.sig = nuevo
+            self.actual.ant = nuevo
+        self.tam += 1
+
+    def siguiente(self):
+        self.actual = self.actual.sig
+        return self.actual.dato
+
+    def anterior(self):
+        self.actual = self.actual.ant
+        return self.actual.dato
+
+    def eliminar_actual(self):
+        nodo = self.actual
+        if self.tam == 1:
+            self.actual = None
+        else:
+            nodo.ant.sig = nodo.sig
+            nodo.sig.ant = nodo.ant
+            self.actual = nodo.sig
+        self.tam -= 1
+        return nodo.dato
+
+
+# ======================================================================
+# Búsqueda binaria (sobre arreglo ordenado)
+# ======================================================================
+def busqueda_binaria(arreglo, folio):         # O(log n)
+    bajo, alto, comparaciones = 0, len(arreglo) - 1, 0
+    while bajo <= alto:
+        medio = (bajo + alto) // 2
+        comparaciones += 1
+        if arreglo[medio].folio == folio:
+            return medio, comparaciones
+        if arreglo[medio].folio < folio:
+            bajo = medio + 1
+        else:
+            alto = medio - 1
+    return -1, comparaciones
+
+
+# ======================================================================
+# LOS 10 EJERCICIOS
+# ======================================================================
+def datos_base():
+    return [
+        Orden(105, "Ana", "Cambio de pantalla", 2),
+        Orden(101, "Luis", "Formateo de equipo", 3),
+        Orden(108, "Marta", "Recuperación de datos", 1),
+        Orden(103, "Pedro", "Cambio de batería", 2),
+        Orden(110, "Sofía", "Diagnóstico de placa", 1),
+    ]
+
+
+def ejercicio_1():
+    titulo("EJERCICIO 1 (Lista simple): Alta y consulta de órdenes")
+    lista = ListaSimple()
+    for o in datos_base():
+        lista.insertar_final(o)
+    urgente = Orden(99, "Cliente VIP", "Reparación express", 1)
+    lista.insertar_inicio(urgente)
+    for o in lista:
+        print("  ", o)
+    verificar(len(lista) == 6, "la lista tiene 6 órdenes")
+    verificar(lista.cabeza.dato.folio == 99, "la orden urgente quedó al inicio")
+
+
+def ejercicio_2():
+    titulo("EJERCICIO 2 (Lista simple): Búsqueda lineal y cancelación")
+    lista = ListaSimple()
+    for o in datos_base():
+        lista.insertar_final(o)
+    orden, comps = lista.buscar(103)
+    print(f"   Buscar folio 103 -> {orden} ({comps} comparaciones)")
+    verificar(orden is not None and comps == 4, "folio 103 encontrado en 4 comparaciones")
+    verificar(lista.buscar(777)[0] is None, "folio inexistente devuelve None")
+    cancelada = lista.eliminar(108)
+    verificar(cancelada.folio == 108 and len(lista) == 4, "se canceló la orden 108")
+    lista.eliminar(105)  # cabeza
+    verificar(lista.cabeza.dato.folio == 101, "eliminar la cabeza actualiza el inicio")
+
+
+def ejercicio_3():
+    titulo("EJERCICIO 3 (Lista simple): Ordenamiento por inserción e inversión")
+    lista = ListaSimple()
+    for o in datos_base():
+        lista.insertar_final(o)
+    lista.ordenar_insercion()
+    folios = [o.folio for o in lista]
+    print("   Orden por prioridad/folio:", folios)
+    verificar(folios == [108, 110, 103, 105, 101], "ordenada por prioridad y folio")
+    lista.invertir()
+    folios = [o.folio for o in lista]
+    print("   Invertida:", folios)
+    verificar(folios == [101, 105, 103, 110, 108], "lista invertida correctamente")
+
+
+def ejercicio_4():
+    titulo("EJERCICIO 4 (Lista simple): Fusión de dos sucursales ordenadas")
+    a, b = ListaSimple(), ListaSimple()
+    for o in [Orden(1, "A", "s", 1), Orden(4, "B", "s", 2), Orden(7, "C", "s", 3)]:
+        a.insertar_final(o)
+    for o in [Orden(2, "D", "s", 1), Orden(3, "E", "s", 2), Orden(9, "F", "s", 3)]:
+        b.insertar_final(o)
+    fusion = ListaSimple.fusionar_ordenadas(a, b)
+    folios = [o.folio for o in fusion]
+    print("   Fusión:", folios)
+    verificar(folios == [1, 2, 3, 4, 7, 9], "fusión ordenada de 6 elementos")
+    verificar(len(fusion) == 6 and len(a) == 3 and len(b) == 3, "las listas originales no cambian")
+
+
+def ejercicio_5():
+    titulo("EJERCICIO 5 (Lista doble): Historial de navegación atrás/adelante")
+
+    class Historial(ListaDoble):
+        def __init__(self):
+            super().__init__()
+            self.pos = None
+
+        def visitar(self, url):
+            if self.pos is not None:           # descarta el "adelante"
+                self.pos.sig = None
+                self.cola = self.pos
+                n, p = 0, self.cabeza
+                while p:
+                    n, p = n + 1, p.sig
+                self.tam = n
+            self.insertar_final(url)
+            self.pos = self.cola
+
+        def atras(self):
+            if self.pos and self.pos.ant:
+                self.pos = self.pos.ant
+            return self.pos.dato
+
+        def adelante(self):
+            if self.pos and self.pos.sig:
+                self.pos = self.pos.sig
+            return self.pos.dato
+
+    h = Historial()
+    for u in ["inicio", "ordenes", "clientes", "reportes"]:
+        h.visitar(u)
+    verificar(h.atras() == "clientes", "atrás -> clientes")
+    verificar(h.atras() == "ordenes", "atrás -> ordenes")
+    verificar(h.adelante() == "clientes", "adelante -> clientes")
+    h.visitar("ajustes")  # borra 'reportes' del futuro
+    print("   Historial final:", list(h))
+    verificar(list(h) == ["inicio", "ordenes", "clientes", "ajustes"], "al visitar se borra el 'adelante'")
+
+
+def ejercicio_6():
+    titulo("EJERCICIO 6 (Lista doble): Inserción/eliminación por posición y recorrido inverso")
+    ld = ListaDoble()
+    for o in datos_base():
+        ld.insertar_final(o)
+    ld.insertar_en(2, Orden(200, "Nuevo", "Instalación", 2))
+    print("   Directo :", [o.folio for o in ld])
+    print("   Inverso :", [o.folio for o in ld.recorrer_inverso()])
+    verificar([o.folio for o in ld][2] == 200, "inserción en posición 2")
+    verificar([o.folio for o in ld.recorrer_inverso()] == [o.folio for o in ld][::-1],
+              "el recorrido inverso es el reverso del directo")
+    quitada = ld.eliminar_en(len(ld) - 1)
+    verificar(quitada.folio == 110 and ld.cola.dato.folio == 103, "eliminar el último actualiza la cola")
+    ld.eliminar_en(0)
+    verificar(ld.cabeza.dato.folio == 101 and ld.cabeza.ant is None, "eliminar el primero actualiza la cabeza")
+    try:
+        ld.eliminar_en(50)
+        verificar(False, "debió lanzar IndexError")
+    except IndexError:
+        verificar(True, "posición inválida lanza IndexError")
+
+
+def ejercicio_7():
+    titulo("EJERCICIO 7 (Lista doble): Burbuja + búsqueda binaria")
+    ld = ListaDoble()
+    for o in datos_base():
+        ld.insertar_final(o)
+    cambios = ld.ordenar_burbuja()
+    print(f"   Orden: {[o.folio for o in ld]} ({cambios} intercambios)")
+    verificar([o.folio for o in ld] == [108, 110, 103, 105, 101], "burbuja ordena por prioridad y folio")
+    verificar(ld.ordenar_burbuja() == 0, "segunda pasada: 0 intercambios (mejor caso)")
+    arreglo = sorted(ld, key=lambda o: o.folio)
+    pos, comps = busqueda_binaria(arreglo, 108)
+    print(f"   Búsqueda binaria del folio 108: índice {pos}, {comps} comparaciones")
+    verificar(pos == 3 and comps <= 3, "binaria encuentra 108 en <= 3 comparaciones")
+    verificar(busqueda_binaria(arreglo, 500)[0] == -1, "binaria devuelve -1 si no existe")
+
+
+def ejercicio_8():
+    titulo("EJERCICIO 8 (Lista circular): Selección + planificador Round Robin")
+    c = ListaCircular()
+    for nombre, t in [("P1", 5), ("P2", 3), ("P3", 8), ("P4", 2)]:
+        c.insertar_final([nombre, t])
+    c.ordenar_seleccion(clave=lambda p: p[1])
+    print("   Procesos por duración:", [p[0] for p in c])
+    verificar([p[0] for p in c] == ["P4", "P2", "P1", "P3"], "selección ordena por tiempo")
+    bitacora, fin = c.round_robin(quantum=3)
+    for nombre, uso, reloj in bitacora:
+        print(f"   t={reloj:>2}: {nombre} usa {uso}")
+    print("   Finalización:", fin)
+    verificar(fin == {"P4": 2, "P2": 5, "P1": 13, "P3": 18},
+              "tiempos de finalización: P4=2, P2=5, P1=13, P3=18")
+    verificar(len(c) == 0, "la lista queda vacía al terminar")
+
+
+def ejercicio_9():
+    titulo("EJERCICIO 9 (Lista circular doble): Reproductor de música en bucle")
+    r = ListaCircularDoble()
+    for t in ["Tema A", "Tema B", "Tema C"]:
+        r.agregar(t)
+    verificar(r.actual.dato == "Tema A", "inicia en el primer tema")
+    verificar([r.siguiente() for _ in range(4)] == ["Tema B", "Tema C", "Tema A", "Tema B"],
+              "siguiente da la vuelta al llegar al final")
+    verificar(r.anterior() == "Tema A" and r.anterior() == "Tema C", "anterior da la vuelta al inicio")
+    eliminado = r.eliminar_actual()
+    verificar(eliminado == "Tema C" and r.actual.dato == "Tema A" and r.tam == 2,
+              "eliminar el tema actual avanza al siguiente")
+
+
+def ejercicio_10():
+    titulo("EJERCICIO 10 (Lista circular): Problema de Josefo (turnos de atención)")
+    c = ListaCircular()
+    for n in range(1, 8):
+        c.insertar_final(n)
+    eliminados, sobreviviente = c.josefo(3)
+    print("   Eliminados:", eliminados, "| Sobreviviente:", sobreviviente)
+    verificar(eliminados == [3, 6, 2, 7, 5, 1], "orden de eliminación correcto (n=7, k=3)")
+    verificar(sobreviviente == 4, "el sobreviviente es el 4")
+    c2 = ListaCircular()
+    c2.insertar_final(1)
+    verificar(c2.josefo(5) == ([], 1), "caso borde: un solo elemento")
+
+
+if __name__ == "__main__":
+    for f in (ejercicio_1, ejercicio_2, ejercicio_3, ejercicio_4, ejercicio_5,
+              ejercicio_6, ejercicio_7, ejercicio_8, ejercicio_9, ejercicio_10):
+        f()
+    print("\n" + "=" * 70)
+    print(f"TOTAL DE VERIFICACIONES APROBADAS: {PRUEBAS_OK}")
+    print("=" * 70)
